@@ -7,6 +7,8 @@
 #include "Text/DreamUIPaths.h"
 
 #include "HAL/FileManager.h"
+#include "HAL/PlatformProcess.h"
+#include "HAL/PlatformTime.h"
 #include "Interfaces/IPluginManager.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
@@ -97,6 +99,35 @@ namespace DreamUIPathsTestLocal
 		return FPaths::ConvertRelativePathToFull(
 			FPaths::Combine(Plugin->GetBaseDir(), DreamUIPaths::SourceDirectoryName));
 	}
+
+	/**
+	 * Whether GetSourceRoots names the root this token spells, waiting out its memo first if it has to.
+	 *
+	 * A plugin's root that appears is seen up to one memo late, by design (DreamUIPaths.cpp): nothing
+	 * in the editor makes one, so the roots are not re-walked on every call to notice. A fixture that
+	 * makes one is the exception, and whether the memo it meets is stale depends on whether some
+	 * earlier test happened to ask in the last half second -- which is an answer that changes with the
+	 * order the runner picked. Waiting it out keeps the test about resolution, not about timing.
+	 */
+	bool WaitForRootToken(const FString& InToken)
+	{
+		const double Deadline = FPlatformTime::Seconds() + 2.0;
+		for (;;)
+		{
+			for (const FDreamUISourceRoot& Root : DreamUIPaths::GetSourceRoots())
+			{
+				if (Root.RootToken.Equals(InToken, ESearchCase::IgnoreCase))
+				{
+					return true;
+				}
+			}
+			if (FPlatformTime::Seconds() >= Deadline)
+			{
+				return false;
+			}
+			FPlatformProcess::Sleep(0.05f);
+		}
+	}
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
@@ -179,6 +210,10 @@ bool FDreamUIPathsPluginRootTest::RunTest(const FString&)
 
 	FScopedRootFile File(PluginRoot, TEXT("PathsTest/Shipped.dui"));
 	if (!TestTrue(TEXT("the fixture wrote its file"), File.bWritten))
+	{
+		return false;
+	}
+	if (!TestTrue(TEXT("and the plugin's root is among the source roots"), WaitForRootToken(TEXT("Plugin.DreamGUI"))))
 	{
 		return false;
 	}

@@ -17,6 +17,7 @@
 #include "DetailCustomization/PropertyType/DreamGradientCustomization.h"
 #include "Text/DreamUIPaths.h"
 #include "Text/DreamUIReflectionPolicy.h"
+#include "Text/DreamUIValueFormat.h"
 
 #include "Framework/Application/SlateApplication.h"
 #include "Framework/Notifications/NotificationManager.h"
@@ -571,8 +572,16 @@ namespace DreamUITextAuthoring
 		// value could be spelled. The font on a text visual is the case -- FontSize is a number the
 		// language writes and the Font next to it is an object reference it does not, and without this
 		// they look identical in the panel.
+		//
+		// Only a LEAF is asked, by the sweep's own leaf rule (DreamUIReflectionPolicy.h): a struct with
+		// no short form is never printed whole -- the sweep recurses into it and writes its fields one
+		// dotted path at a time, AnchorData.SizeDelta and the rest. Asking the printer about the struct
+		// itself always fails, and greyed the anchor block over five fields that are all live; each
+		// field is judged on its own when the panel asks about it.
 		const FLiteralSpellingProbe& Probe = Local::GetLiteralSpellingProbe();
-		if (Probe)
+		const bool bIsStructTheSweepRecursesInto = CastField<FStructProperty>(InLeafProperty) != nullptr
+			&& !DreamUIValueFormat::HasShortForm(InLeafProperty);
+		if (Probe && !bIsStructTheSweepRecursesInto)
 		{
 			if (const void* ValuePtr = Local::ResolveValuePtr(InOwner, InLeafProperty, InParentProperties))
 			{
@@ -585,9 +594,11 @@ namespace DreamUITextAuthoring
 		return EPropertyEditVerdict::Writable;
 	}
 
-	void SetLiteralSpellingProbe(FLiteralSpellingProbe InProbe)
+	FLiteralSpellingProbe SetLiteralSpellingProbe(FLiteralSpellingProbe InProbe)
 	{
+		FLiteralSpellingProbe Previous = MoveTemp(Local::GetLiteralSpellingProbe());
 		Local::GetLiteralSpellingProbe() = MoveTemp(InProbe);
+		return Previous;
 	}
 
 	bool HasLiteralSpellingProbe()

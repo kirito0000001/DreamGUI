@@ -212,27 +212,34 @@ namespace DreamUITextGateTestLocal
 	using EVerdict = DreamUITextAuthoring::EPropertyEditVerdict;
 
 	/**
-	 * A spelling probe for the duration of one test, removed on the way out.
+	 * A spelling probe for the duration of one test, with the one it replaced put back on the way out.
 	 *
 	 * The probe is process-wide -- it is installed once by whoever owns the write-back -- so a test
 	 * that left one behind would decide the verdicts of every test that ran after it, in whatever
 	 * order the runner happened to pick. That is the shape of failure that gets diagnosed as
 	 * flakiness for a week.
+	 *
+	 * Put BACK, not cleared: the editor module installs the real judge at startup, and clearing it
+	 * here left every later test in the process with no probe at all -- which is how a test that
+	 * needs the real one passed in the full suite and failed run on its own.
 	 */
 	struct FScopedSpellingProbe
 	{
 		explicit FScopedSpellingProbe(DreamUITextAuthoring::FLiteralSpellingProbe InProbe)
+			: Previous(DreamUITextAuthoring::SetLiteralSpellingProbe(MoveTemp(InProbe)))
 		{
-			DreamUITextAuthoring::SetLiteralSpellingProbe(MoveTemp(InProbe));
 		}
 
 		~FScopedSpellingProbe()
 		{
-			DreamUITextAuthoring::SetLiteralSpellingProbe(nullptr);
+			DreamUITextAuthoring::SetLiteralSpellingProbe(MoveTemp(Previous));
 		}
 
 		FScopedSpellingProbe(const FScopedSpellingProbe&) = delete;
 		FScopedSpellingProbe& operator=(const FScopedSpellingProbe&) = delete;
+
+	private:
+		DreamUITextAuthoring::FLiteralSpellingProbe Previous;
 	};
 
 	const FProperty* FindProperty(const UClass* InClass, const TCHAR* InName)
@@ -543,6 +550,7 @@ bool FDreamUINonWritablePropertyIsShownReadOnlyTest::RunTest(const FString&)
 	// file-local to the write-back today. What is asserted here is the WIRING: that a probe which
 	// refuses a property turns into a read-only row, and that the verdict names the reason. When the
 	// real one is exported and installed, this test keeps checking the same seam.
+	const bool bHadProbeBefore = DreamUITextAuthoring::HasLiteralSpellingProbe();
 	{
 		const FScopedSpellingProbe Probe(
 			[](const FProperty* InLeaf, const void*) { return CastField<FObjectPropertyBase>(InLeaf) == nullptr; });
@@ -571,8 +579,8 @@ bool FDreamUINonWritablePropertyIsShownReadOnlyTest::RunTest(const FString&)
 			EVerdict::HasNoTextSpelling, Source.FileName).ToString();
 		TestTrue(TEXT("and the reason names the file"), Reason.Contains(Source.FileName));
 	}
-	TestFalse(TEXT("the probe is gone again once the test's scope ends"),
-		DreamUITextAuthoring::HasLiteralSpellingProbe());
+	TestEqual(TEXT("the probe is gone again once the test's scope ends"),
+		DreamUITextAuthoring::HasLiteralSpellingProbe(), bHadProbeBefore);
 
 	// ---- and the custom-row half, which is the one a property-only gate misses
 	TestTrue(TEXT("A custom row on the widget is read-only by default"),

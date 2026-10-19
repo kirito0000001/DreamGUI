@@ -197,8 +197,13 @@ namespace DreamUITextAuthoring
 	 * existed. Failing closed was the alternative and is worse by a wide margin: with no probe there
 	 * is no way to tell a font reference from a font SIZE, so closing would grey out every style
 	 * value on every `.dui` and leave the designer with nothing to do.
+	 *
+	 * Returns the probe it replaced, so a caller that installs one for a while -- a test -- can put
+	 * back the one the editor module installed instead of leaving the gate with none. Clearing it on
+	 * the way out took the real judge away from every test that ran afterwards, and a test that
+	 * relied on the real one passed only when something earlier had removed it.
 	 */
-	DREAMGUIEDITOR_API void SetLiteralSpellingProbe(FLiteralSpellingProbe InProbe);
+	DREAMGUIEDITOR_API FLiteralSpellingProbe SetLiteralSpellingProbe(FLiteralSpellingProbe InProbe);
 
 	/** Whether a probe has been installed. False means the HasNoTextSpelling verdict can never occur. */
 	DREAMGUIEDITOR_API bool HasLiteralSpellingProbe();
